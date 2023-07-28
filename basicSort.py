@@ -40,11 +40,16 @@ def process(imgpaths):
             # Convert the image to grayscale
             gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         except:
+            image.append(-1)
+            image.append(-1)
             continue
         
         blurThresh =  isBlurry(gray)
         emptyThresh = isEmpty(gray)
+
         if emptyThresh == 0:
+            image.append(0)            
+            image.append(0)
             continue
 
         image.append(blurThresh)
@@ -62,7 +67,9 @@ def check(image):
         # Convert the image to grayscale
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     except:
-        return None
+        image.append(-1)
+        image.append(-1)
+        return image
     
     blurThresh =  isBlurry(gray)
     emptyThresh = isEmpty(gray)

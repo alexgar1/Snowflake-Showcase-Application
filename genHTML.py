@@ -37,7 +37,7 @@ PAGE_TYPE_TRIPTYCH = 2;
 #
 
 # title of the page
-PAGE_TITLES = [ "MASC Showcase: Snowflakes in Freefall",
+PAGE_TITLES = [ "Live Image Feed: Snowflakes in Freefall",
 				"MASC Showcase: Snowflakes in Freefall",
 				"MASC Showcase: Triplet Images of Snowflakes in Freefall"
 			   ]

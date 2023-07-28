@@ -6,13 +6,29 @@
 
 # 1. Initilizes MASC 
 # 2. Creates and interactive UI to configure filter specifications for snowflake showcase
-# 3. When a new snowflake is captured that meets criteria it uploads it to snowflake showcase
+# 3. When a new snowflake is captured that meets criteria it uploads it to snowflake showcase website
+
+
+'''
+TO DO:
+
+* create data plot webpage
+    - bokeh hisogram
+    - have data for each 'storm' using date data
+
+* initMASC.py
+
+* get this program running on MASC computer hardware
+
+'''
 
 from tkinter import *
 from PIL import ImageTk, Image
-import basicSort, os, time, shutil, genHTML, upload, initMASC
+import basicSort, os, time, shutil, genHTML, upload, initMASC, getData, deltaStorm
 
-class getUI:  
+PATH = '/Users/alexgarrett/Desktop/UofU/engUI'
+
+class Start:
     def __init__(self, mascpath, local, name, pw, time, m, n, remove):
         self.mascpath=mascpath
         self.local = local
@@ -22,17 +38,41 @@ class getUI:
         self.m = m
         self.n = n
         self.remove = remove
+        self.snowing = False
+        self.storm = 0
+        self.flakes = []
+        self.imgpaths = []
+        os.chdir(PATH)
 
 
     #############
     # APP LOGIC #
     #############
 
+    def update(self, file):
+        # udpate data html
+        getData.getSizeHist(self.imgpaths)
+        getData.getSnowRateHist(self.flakes)
+
+        if file != False:
+            # upload image and image.html
+            upload.copyHTMLwithImage('./chosen/', file)
+
+            print('UPLOADED:', file)
+
+        else:
+            upload.copyHTML('./chosen/')
+            
+            print('UPDATED WEBSITE PARAMETERS')
+            
+
     def switch(self):
         self.root.destroy()
+        self.update(False)
 
     def switch2(self):
         self.param.destroy()
+        self.update(False)
 
     def parseDateTimeFromFileName(self, inFile):
         # # @author	Konstantin Shkurko (kshkurko@cs.utah.edu)
@@ -103,35 +143,58 @@ class getUI:
         outInfo.sort( key=lambda tmp: tmp[1], reverse=True )
         return outInfo
 
+    def checkSnowing(self):
+        # if snowing check if not snowing
+        if self.snowing == True:
+            if deltaStorm.storm(self.flakes) == True:
+                self.snowing = False # end storm
+                print('END STORM', self.storm)
+                print()
+
+        # if not snowing check if snowing
+        elif self.snowing == False:
+            if deltaStorm.storm(self.flakes) == False:
+                self.snowing = True
+                self.storm += 1 # new storm
+                print()
+                print('NEW STORM: ', self.storm)
+
+
+
     def checkDir(self):
         ''' checks masc path for new images then updates html and copys both image and html file to server'''
-
         new = self.getImagesInDir()
+        self.checkSnowing()
+        
+
         i=0
         while self.imgpaths[0][0] != new[i][0]:
-            #print(self.imgpaths[0][0], new[i][0])
-            print('new image:', new[i][0])
+            # get path of image in chosen folder
+            dir, file = os.path.split(new[i][0])
 
-            # if new image found add it to imgpaths[]
-            id = basicSort.check(new[i])
-            if id[2] <= (self.blur.get()**2)/700 or id[3] <= (self.empty.get()**2)/10000000:
+            print('new image:', file)
+
+            # get flakes rate of change
+            self.flakes[-1] = deltaStorm.delta(new)
+            print('flakes:', self.flakes)
+
+            new[i].append(self.storm)
+            
+            # if new image found add it to imgpaths[]. If meets criteria copy it, otherwise continue to next new snowflake
+            new[i] = basicSort.check(new[i])
+            if new[i][3] <= (self.blur.get()**2)/700 or new[i][4] <= (self.empty.get()**2)/10000000:
                 i += 1
                 continue
 
-            new[i] = id
-            
             # copy to chosen folder
             shutil.copy(new[i][0], '/Users/alexgarrett/Desktop/UofU/engUI/chosen/')
 
             # get HTML with (new) data
-            genHTML.genOutputHTML('/Users/alexgarrett/Desktop/UofU/engUI/chosen/', '/Users/alexgarrett/Desktop/UofU/engUI/chosen/', 'index.html', 5, 6, 120, 120, 5000, False, False, 5)
+            genHTML.genOutputHTML('/Users/alexgarrett/Desktop/UofU/engUI/chosen/', '/Users/alexgarrett/Desktop/UofU/engUI/chosen/', 'images.html', int(self.n), int(self.m), 120, 120, 5000, False, False, 5)
 
-            # get path of image in chosen folder
-            dir, file = os.path.split(new[i][0])
+            # upload image and new html
+            self.update(file)
 
-            # upload image and HTML to server
-            upload.copyHTML('./chosen/', file)
-            print('UPLOADED:', file)
             i+=1
 
         for img in reversed(new[:i]):
@@ -144,6 +207,7 @@ class getUI:
         #print('size:', self.empty.get(), 'blur:', self.blur.get())
 
         # check for new images
+        self.flakes.append(0)
         self.checkDir()
         self.subset = []
 
@@ -151,7 +215,7 @@ class getUI:
         for img in self.imgpaths:
             if len(self.subset)>8:
                  break
-            if img[2] > (self.blur.get()**2)/700 and img[3] > (self.empty.get()**2)/10000000:
+            if img[3] > (self.blur.get()**2)/700 and img[4] > (self.empty.get()**2)/10000000:
                  self.subset.append(img)
                 
         
@@ -200,8 +264,8 @@ class getUI:
             self.labels.append(label)
             self.labels.append(date)
 
-        # check folder every 5 seconds
-        self.root.after(5000, self.getImgSubset, 0)
+        # check folder every 10 seconds. MUST be same as INTERVAL in deltaStorm.py
+        self.root.after(10000, self.getImgSubset, 0)
 
 
     ###############
@@ -242,7 +306,7 @@ class getUI:
         #Time between folder scans
         Label(root,text="Time between folder scans (s)",).grid(row=1, sticky=W, padx=10)
         self.time = StringVar()
-        self.time.set(2)
+        self.time.set(10)
         Entry(root,textvariable=self.time,width=2).grid(row=1, column=1, sticky=W)
 
         #Matrix dimensions
@@ -251,8 +315,8 @@ class getUI:
         Label(root,text="Size of image grid (NxM)",).grid(row=2, sticky=W, padx=10)
         self.n = StringVar()
         self.m = StringVar()
-        self.n.set(5)
-        self.m.set(12)
+        self.n.set(10)
+        self.m.set(20)
         Entry(matrix,textvariable=self.n, width= 2).grid(row=2, column=1, sticky=W)
         Label(matrix, text='x').grid(row=2, column=2)
         Entry(matrix,textvariable=self.m, width= 2).grid(row=2, column=3, sticky=W)
@@ -268,6 +332,7 @@ class getUI:
         ''' get sliders for sorting snowflake images and display image subset of most recent images that meet criteria
             images in subset are automatically updated as snowflakes fall
         '''
+
         self.root = Tk()
         root = self.root
         root.winfo_toplevel().title("Showcase")
@@ -294,20 +359,33 @@ class getUI:
         self.frame2.grid(row=0, column=1)
         self.labels = []
 
-        #Submit
-        Button(frame1, text='Edit Website Parameters', command=self.getParameters).grid(row=6, pady=10)
+        # website paramemeters
+        Button(frame1, text='Edit Website Parameters', command=self. getParameters).grid(row=6, pady=10)
         
+
+        #
+        # imgpaths item order: ['name', date, storm, sharpness, size]
+        #
+
         self.imgpaths = self.getImagesInDir()
-        self.imgpaths = basicSort.process(self.imgpaths)
-        #
-        # imgpaths item order: ['name',date,sharpness,size]
-        #
+
+        ''' sets all previous images to storm 0 (place holder) '''
+        for img in self.imgpaths:
+            img.append(0)
+
+        self.imgpaths = basicSort.process(self.imgpaths) # appends 
+        getData.getSizeHist(self.imgpaths)
+        getData.getSnowRateHist([0])
+
+        for img in self.imgpaths:
+            print(img)
+
         self.root.after(0, self.getImgSubset, 0)
         mainloop()
 
 
 def main():
-    profile = getUI('/Users/alexgarrett/Desktop/UofU/engUI/sort/','.', '', '', 2, 5, 8, 1)
+    profile = Start('/Users/alexgarrett/Desktop/UofU/engUI/sort/','.', '', '', 2, 5, 8, 1)
 
     # starts MASC
     #initMASC.callData()
