@@ -38,7 +38,7 @@ def copyHTML(path):
     # Connect to the remote server via SSH
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    ssh.connect('kingspeak34.chpc.utah.edu', username='u6045297', password='X1q9l4571%')
+    ssh.connect('kingspeak34.chpc.utah.edu', username='', password='')
 
     scp = ssh.open_sftp()
 
