@@ -1,20 +1,28 @@
 
 
 # User Interface for intializing MASC and Snowflake Showcase
-# Written by Alex Garrett for University of Utah, Summer 2023
+# Written by Alex Garrett, alexgarrett2468@gmail.com, for University of Utah, Summer 2023
 
 
 # 1. Initilizes MASC 
-# 2. Creates and interactive UI to configure filter specifications for snowflake showcase
-# 3. When a new snowflake is captured that meets criteria it uploads it to snowflake showcase website
+# 2. Displays UI to configure filter specifications for snowflake showcase (size and sharpness)
+# 3. When a new snowflake is photographed that meets filter criteria it uploads it to snowflake showcase website
+# 4. Updates data plots for data from masc (size and rate)
 
+
+#! NOTE
+# Be sure to change PATH global string if moving 'masc_showcase' folder to a new location or renaming
+# Specify path where masc copies photos if changed under self.mascpath
 
 '''
 TO DO:
 
 * create data plot webpage
-    - bokeh hisogram
-    - have data for each 'storm' using date data
+    - make it so storms files dont overwrite when program restarts ie search for latest storm files and start there
+    - make data plot's date accurate instead of adding 0s
+
+    - works with deid data on seperate page
+
 
 * initMASC.py
 
@@ -23,56 +31,129 @@ TO DO:
 '''
 
 from tkinter import *
+from datetime import timedelta, datetime
 from PIL import ImageTk, Image
-import basicSort, os, time, shutil, genHTML, upload, initMASC, getData, deltaStorm
+import basicSort, os, time, shutil, genHTML, initMASC, deltaStorm, paramiko, re, threading, glob, concurrent.futures
 
-PATH = '/Users/alexgarrett/Desktop/UofU/engUI'
+PATH =  'C:\\Users\\Cooper\\Desktop\\masc_showcase\\' # make sure ends with /
+
+# default username and password
+username = ''
+password = ''
 
 class Start:
-    def __init__(self, mascpath, local, name, pw, time, m, n, remove):
-        self.mascpath=mascpath
-        self.local = local
-        self.name = name
-        self.pw = pw
-        self.time = time
-        self.m = m
-        self.n = n
-        self.remove = remove
-        self.snowing = False
-        self.storm = 0
-        self.flakes = []
+    def __init__(self):
+        self.mascpath = 'C:\\MASC\\The_Alta_Project_2022\\'
+        self.name = ''
+        self.pw = ''
+        self.snowing = True
+        self.storm = 1
+        self.flakes = [0]
+        self.sizes = [0.001]
         self.imgpaths = []
-        os.chdir(PATH)
-
+        self.ssh = None
+        self.pixel = None
+        self.success = 0
 
     #############
     # APP LOGIC #
     #############
 
-    def update(self, file):
-        # udpate data html
-        getData.getSizeHist(self.imgpaths)
-        getData.getSnowRateHist(self.flakes)
+    def connect(self):
+        self.ssh = paramiko.SSHClient()
+        self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        self.ssh.connect('kingspeak34.chpc.utah.edu', username=self.name.get(), password=self.pw.get())
 
-        if file != False:
-            # upload image and image.html
-            upload.copyHTMLwithImage('./chosen/', file)
 
-            print('UPLOADED:', file)
+    def checkConnection(self):
+        if self.ssh is None:
+            return False
+        
+        try:
+            transport = self.ssh.get_transport()
+            if transport and transport.is_active():
+                return True
+            else:
+                return False
+        except Exception:
+            return False
+        
+    def copy(self, image=False):
+        
+        try:
+            scp = self.ssh.open_sftp()
+            # copy data html
+            scp.put(f'{PATH}data\\data{str(self.storm)}.txt', f'/uufs/chpc.utah.edu/common/home/snowflake/public_html/LiveFeed/data/data{str(self.storm)}.txt')
+            scp.put(f'{PATH}data\\flakes{str(self.storm)}.txt', f'/uufs/chpc.utah.edu/common/home/snowflake/public_html/LiveFeed/data/flakes{str(self.storm)}.txt')
+
+            if image != False:
+                # copy showcase html
+                scp.put(f'{PATH}chosen/images.html', '/uufs/chpc.utah.edu/common/home/snowflake/public_html/LiveFeed/images.html')
+
+                # copy image
+                new = os.path.join(PATH+'chosen', image)
+                scp.put(new, '/uufs/chpc.utah.edu/common/home/snowflake/public_html/LiveFeed/'+image)
+                scp.put(new[:-4]+'_s.jpg', '/uufs/chpc.utah.edu/common/home/snowflake/public_html/LiveFeed/'+image[:-4]+'_s.jpg')
+
+                print('Uploaded:', image)
+
+            scp.close()
+
+        except Exception as e:
+            print(e)
+            # if upload threads are overloaded upload image on main thread
+            #self.update(False, image)
+
+    
+    def update(self, images=False, retry=False):
+
+        max = 3 # number of threadsto create for upload
+        # if you are getting "Secsh channel 44 open FAILED: open failed: Connect failed" or max recursion depth in output note that images 
+        # will still be upload play around with the value of max keeping it as high as possible until that doesnt happen (I recommend making it a multiple of 3)
+
+        # Connect to the remote server via SSH
+        if self.checkConnection():
+            if retry != False:
+                self.copy(retry)
+                return
+            
+            if images == False:
+                self.copy()
+                return
+			
+            for i in images:
+                self.copy(i)
+            
+            '''
+            while images != []:
+
+                # create different threads for upload (makes upload much faster)
+                threads = []
+                for i in images[:max]:
+                    thread = threading.Thread(target=self.copy, args=(i,))
+                    threads.append(thread)
+                    thread.start()
+                
+                for thread in threads:
+                    if thread != threading.current_thread():
+                        thread.join()
+                
+                images = images[max:]
+            '''
 
         else:
-            upload.copyHTML('./chosen/')
-            
-            print('UPDATED WEBSITE PARAMETERS')
+            print()
+            print("Reconnecting SSH...")
+            self.connect()
+            print("Back Online")
+            print()
             
 
     def switch(self):
         self.root.destroy()
-        self.update(False)
 
     def switch2(self):
         self.param.destroy()
-        self.update(False)
 
     def parseDateTimeFromFileName(self, inFile):
         # # @author	Konstantin Shkurko (kshkurko@cs.utah.edu)
@@ -103,6 +184,7 @@ class Start:
             # @return list of PNG filenames sorted on timestamp in descending order
             #
             # # original code written by Konstantin Shkurko (kshkurko@cs.utah.edu)
+            # # modified by alex garrett
 
         if( not os.path.exists( self.mascpath ) ):
             print( "ERROR: output path (" + self.mascpath + ")doesn't exist!")
@@ -110,11 +192,20 @@ class Start:
         # init file info
         outInfo = []
         files = []
-        # open the directory
-        for root, dirs, f in os.walk(self.mascpath):
-            for file in f:
-                if file.lower().endswith(('.png')):
-                    files.append(os.path.join(root, file))
+
+        # Get a list of all subdirectories in the given directory
+        subdirectories = [d for d in os.listdir(self.mascpath) if os.path.isdir(os.path.join(self.mascpath, d))]
+
+        # Sort the subdirectories based on modification time in descending order
+        subdirectories.sort(key=lambda d: os.path.getmtime(os.path.join(self.mascpath, d)), reverse=True)
+
+        dir = os.path.join(self.mascpath, subdirectories[0])
+
+        # gets files
+        for file in os.listdir(dir):
+            if file.lower().endswith(('.png')):
+                # Construct the full path of the file
+                files.append(os.path.join(dir, file))
 
         for file in files:
             # get image tags to resave later (and parse out date)
@@ -124,8 +215,11 @@ class Start:
                 continue
             imgTags  = img.info
             if('Creation Time' in imgTags):
-                imgCTime      = time.strptime( imgTags['Creation Time'], "%d %b %Y %H:%M:%S +0000" )
-                outInfo.append( [file, time.mktime( imgCTime )] )
+                try:
+                    imgCTime      = time.strptime( imgTags['Creation Time'], "%d %b %Y %H:%M:%S +0000" )
+                    outInfo.append( [file, time.mktime( imgCTime )] )
+                except:
+                    pass
             else:
                 tmp = self.parseDateTimeFromFileName( file )
                 if( tmp != False ):
@@ -135,19 +229,19 @@ class Start:
                     outInfo.append( [file, fInfo.st_ctime] )
             del img
 
-
             # maybe add a slider to only check images in the past
-
-
         # sort in descending order based on created timestamp (first NxM images)
         outInfo.sort( key=lambda tmp: tmp[1], reverse=True )
         return outInfo
-
+    
     def checkSnowing(self):
         # if snowing check if not snowing
         if self.snowing == True:
             if deltaStorm.storm(self.flakes) == True:
                 self.snowing = False # end storm
+                self.flakes = [0]
+                self.sizes = [0.001]
+                print("./././././.")
                 print('END STORM', self.storm)
                 print()
 
@@ -156,66 +250,98 @@ class Start:
             if deltaStorm.storm(self.flakes) == False:
                 self.snowing = True
                 self.storm += 1 # new storm
+				
+				# create new data files (redundancy)
+                with open(f'data\\data{self.storm}.txt' ,'w'):
+                    pass
+                with open(f'data\\flakes{self.storm}.txt', 'w'):
+                    pass
+				
                 print()
-                print('NEW STORM: ', self.storm)
-
+                print('NEW STORM', self.storm)
+                print("\`\\`\\`\\`\\`\\`")
+                print()
 
 
     def checkDir(self):
         ''' checks masc path for new images then updates html and copys both image and html file to server'''
         new = self.getImagesInDir()
         self.checkSnowing()
+		
+        if len(new)<len(self.imgpaths):
+            self.imgpaths = []
+
+        dif = len(new) - len(self.imgpaths)
+        if dif!=0:
+            print(dif, 'new images')
         
-
+        files = []
         i=0
-        while self.imgpaths[0][0] != new[i][0]:
-            # get path of image in chosen folder
-            dir, file = os.path.split(new[i][0])
+        for i in range(0,dif):
 
-            print('new image:', file)
+    	    #print('new image:', file)
 
-            # get flakes rate of change
-            self.flakes[-1] = deltaStorm.delta(new)
-            print('flakes:', self.flakes)
-
+    	    # get flakes rate of change
+    	    self.flakes[-1] = deltaStorm.delta(new)
+    	    #print('flakes:', self.flakes)
             new[i].append(self.storm)
-            
-            # if new image found add it to imgpaths[]. If meets criteria copy it, otherwise continue to next new snowflake
-            new[i] = basicSort.check(new[i])
-            if new[i][3] <= (self.blur.get()**2)/700 or new[i][4] <= (self.empty.get()**2)/10000000:
-                i += 1
-                continue
 
-            # copy to chosen folder
-            shutil.copy(new[i][0], '/Users/alexgarrett/Desktop/UofU/engUI/chosen/')
+    	    # if new image found add it to imgpaths[]. If meets criteria copy it, otherwise continue to next new snowflake
+    	    new[i] = basicSort.check(new[i])
+    	    self.sizes.append(new[i][4])
+    	    #print(new[i][4], (self.empty.get()**2)/6)
+    	    if new[i][3] <= (self.blur.get()**2)/700 or new[i][4] <= (self.empty.get()**2)/6: # make sure function is same as in getImgSubset
+    		    i += 1
+    		    continue
 
-            # get HTML with (new) data
-            genHTML.genOutputHTML('/Users/alexgarrett/Desktop/UofU/engUI/chosen/', '/Users/alexgarrett/Desktop/UofU/engUI/chosen/', 'images.html', int(self.n), int(self.m), 120, 120, 5000, False, False, 5)
+    	    # copy to chosen folder
+    	    shutil.copy(new[i][0], PATH+'/chosen/')
 
-            # upload image and new html
-            self.update(file)
+    	    # get HTML with (new) data
+    	    genHTML.genOutputHTML(PATH+'/chosen/', PATH+'/chosen/', 'images.html', 100, 9, 120, 120, 10000, False, False, 5)
 
-            i+=1
+    	    # get path of image in chosen folder
+    	    dir, file = os.path.split(new[i][0])
+
+    	    files.append(file)
+
+        i+=1
+		
+        # upload image and new html
+        self.update(files)
 
         for img in reversed(new[:i]):
             self.imgpaths.insert(0, img)
+
+            # write to data.txt
+            with open(f'{PATH}data/data{self.storm}.txt', 'a') as data:
+                data.write('\n'+str(img)[6+len(PATH):-1])
+                    
+
+    def elapsed(self):
+        # check folder and update flake rate data every given interval
+
+        self.checkDir()
+        self.getImgSubset(0)
+        self.flakes.append(0)
+        with open(f'{PATH}data/flakes{self.storm}.txt', 'w') as flakes:
+            flakes.write(str(self.flakes))
+        self.update()
+        self.root.after(2000, self.elapsed)
 
     
     def getImgSubset(self, value):
         ''' produces an image subset of most recent images that match criteria from sliders '''
 
-        #print('size:', self.empty.get(), 'blur:', self.blur.get())
-
-        # check for new images
-        self.flakes.append(0)
-        self.checkDir()
+        
+        # self.checkDir()
         self.subset = []
 
         # get subset images that match criteria
         for img in self.imgpaths:
             if len(self.subset)>8:
                  break
-            if img[3] > (self.blur.get()**2)/700 and img[4] > (self.empty.get()**2)/10000000:
+            if img[3] > (self.blur.get()**2)/700 and img[4] > (self.empty.get()**2)/6: # make sure function is same as in checkDir
                  self.subset.append(img)
                 
         
@@ -264,9 +390,6 @@ class Start:
             self.labels.append(label)
             self.labels.append(date)
 
-        # check folder every 10 seconds. MUST be same as INTERVAL in deltaStorm.py
-        self.root.after(10000, self.getImgSubset, 0)
-
 
     ###############
     # APP WINDOWS #
@@ -282,48 +405,41 @@ class Start:
         Label(root, text = 'Log In', font='Helvetica 18 bold').grid(row=0, pady=10)
         Label(root,text="UNID").grid(row=1, sticky=W, padx=10)
         self.name = StringVar()
+        self.name.set(username)
         Entry(root,textvariable=self.name, width=20).grid(row=2, padx=10)
 
         Label(root,text="Password",).grid(row=3, sticky=W, padx=10)
         self.pw = StringVar()
+        self.pw.set(password)
         Entry(root,textvariable=self.pw, show="*",width=20).grid(row=4, padx=10)
         
         #Submit
         Button(root, text='Enter', command=self.switch).grid(row=5, pady=20)
         mainloop()
-    
-    def getParameters(self):
-        ''' get parameters for website specifications 
         
-        NEEDS TO BE ADJUSTED FOR NEW WEBSITE DESIGN'''
+    def getParameters(self):
+        ''' get parameters for data plots '''
+        
+        params = []
+        f =  open('dataparam.txt', 'r')
+        content = f.readlines()
+        for line in content:
+            if line:
+                match = re.search('\w+=(\d+\.\d+)', line)
+                params.append(float(match.group(1)))
+        
 
         self.param = Toplevel(self.root)
         root = self.param
-        root.winfo_toplevel().title("Showcase")
+        root.winfo_toplevel().title("Data Variables")
 
-        Label(root, text='Website Parameters', font='Helvetica 18 bold').grid(row=0, pady=10)
-
-        #Time between folder scans
-        Label(root,text="Time between folder scans (s)",).grid(row=1, sticky=W, padx=10)
-        self.time = StringVar()
-        self.time.set(10)
-        Entry(root,textvariable=self.time,width=2).grid(row=1, column=1, sticky=W)
-
-        #Matrix dimensions
-        matrix = LabelFrame(root)
-        matrix.grid(row=2, column=1, sticky=W)
-        Label(root,text="Size of image grid (NxM)",).grid(row=2, sticky=W, padx=10)
-        self.n = StringVar()
-        self.m = StringVar()
-        self.n.set(10)
-        self.m.set(20)
-        Entry(matrix,textvariable=self.n, width= 2).grid(row=2, column=1, sticky=W)
-        Label(matrix, text='x').grid(row=2, column=2)
-        Entry(matrix,textvariable=self.m, width= 2).grid(row=2, column=3, sticky=W)
-
-        #Remove labels
-        self.remove = IntVar()
-        Checkbutton(root, text='Remove Labels',variable=self.remove, onvalue=1, offvalue=0).grid(row=3, sticky=W, padx=10)
+        Label(root, text='Change Defaults in dataparam.txt', font='Helvetica 12 bold').grid(row=0, pady=10)
+            
+        # Pixel Size
+        Label(root,text="Pixel Size",).grid(row=1, sticky=W, padx=10)
+        self.pixel = StringVar()
+        self.pixel.set(params[0])
+        Entry(root,textvariable=self.pixel,width=5).grid(row=1, column=1, sticky=W)
 
         Button(root, text='Submit', command=self.switch2).grid(row=4, pady=10)
         root.wait_window()
@@ -343,12 +459,12 @@ class Start:
 
         # Size threshold
         Label(frame1, text='Size').grid(row=0, sticky=W, padx=10)
-        self.empty = Scale(frame1, from_=0, to=100, command = self.getImgSubset, orient=HORIZONTAL)
+        self.empty = Scale(frame1, from_=0, to=100, orient=HORIZONTAL)
         self.empty.grid(row=0, column=1, sticky=W)
         
         # Blur threshold
         Label(frame1, text='Sharpness').grid(row=1, sticky=W, padx=10)
-        self.blur = Scale(frame1, from_=0, to=100, command = self.getImgSubset, orient=HORIZONTAL,)
+        self.blur = Scale(frame1, from_=0, to=100, orient=HORIZONTAL,)
         self.blur.grid(row=1, column=1, sticky=W)
         
         #Rrefesh
@@ -358,34 +474,51 @@ class Start:
         self.frame2 = LabelFrame(root,text='Image Subset',padx=15, pady=15)
         self.frame2.grid(row=0, column=1)
         self.labels = []
-
-        # website paramemeters
-        Button(frame1, text='Edit Website Parameters', command=self. getParameters).grid(row=6, pady=10)
         
+        Button(frame1, text='Data Parameters', command=self. getParameters).grid(row=6, pady=10)
 
         #
         # imgpaths item order: ['name', date, storm, sharpness, size]
         #
 
         self.imgpaths = self.getImagesInDir()
+		
+        for i in self.imgpaths:
+            i.append(0)
+		
+        print(self.imgpaths)
 
-        ''' sets all previous images to storm 0 (place holder) '''
-        for img in self.imgpaths:
-            img.append(0)
+        self.imgpaths = basicSort.process(self.imgpaths) # appends
+		
+        print(self.imgpaths)
 
-        self.imgpaths = basicSort.process(self.imgpaths) # appends 
-        getData.getSizeHist(self.imgpaths)
-        getData.getSnowRateHist([0])
+        ## find latest storm file
 
-        for img in self.imgpaths:
-            print(img)
+        # Construct the pattern for the glob function
+        pattern = os.path.join(PATH+'data/', 'data*.txt')
+        
+        # Use glob to get all files matching the pattern
+        files = glob.glob(pattern)
 
-        self.root.after(0, self.getImgSubset, 0)
+        # Extract the number from each filename and find the maximum
+        for file_name in files:
+            match = re.search(r'flakes(\d+).txt', os.path.basename(file_name))
+            if match:
+                number = int(match.group(1))
+                self.storm = number+1
+				
+        with open(f'data\\data{self.storm}.txt', 'w'):
+            pass
+
+        print('Starting from storm', self.storm)
+        print('Snowing = True')
+
+        self.root.after(0, self.elapsed)
         mainloop()
 
 
 def main():
-    profile = Start('/Users/alexgarrett/Desktop/UofU/engUI/sort/','.', '', '', 2, 5, 8, 1)
+    profile = Start()
 
     # starts MASC
     #initMASC.callData()
