@@ -1,2 +1,2 @@
 # snowflakeshowcase
-Source code for snoflake sorting algorithms and showcase website
+Source code for snowflake sorting algorithms and showcase website
