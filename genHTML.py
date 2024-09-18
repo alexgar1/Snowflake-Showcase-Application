@@ -14,6 +14,9 @@
 #   set the -diOut setting here to correctly reference the public_html
 #
 # @author	Konstantin Shkurko (kshkurko@cs.utah.edu)
+
+# Modified by Alex Garrett
+
 # @date		02.08.12
 # @updated  03.04.13
 # @version  0.141
