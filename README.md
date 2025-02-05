@@ -6,9 +6,9 @@ NOTE: This app is built ONLY for the MASC mini mac near Alta Ski resort where it
 
 # USAGE
 
-## Backend User Interface
+## User Interface
 
-1. In the `masc_showcase` folder, run `START.py`.
+1. To start the application click the black snowflake logo on the Desktop entitiled `Showcase` OR In the `masc_showcase` folder, run `START.py`.
 2. Log in with your CHPC credentials.
 3. Use sliders to set lower bound thresholds for snowflakes.
    - Only snowflakes with values higher than these will be uploaded to the showcase.
