@@ -2,7 +2,7 @@
 
 This python application for the Multi Angle Snowflake Camera (MASC) tracks snowflake images in real time and provides a GUI for users to sort incoming images by size and clarity (sharpness).
 
-NOTE: This app is built ONLY for the MASC mini mac hosted near Alta Ski resort where it is hosted.
+NOTE: This app is built ONLY for the MASC mini mac near Alta Ski resort where it is hosted.
 
 # USAGE
 
