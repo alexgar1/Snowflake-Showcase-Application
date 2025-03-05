@@ -115,8 +115,7 @@ class Start:
 			self.ssh = paramiko.SSHClient()
 			self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 			
-			#self.ssh.connect('kingspeak33.chpc.utah.edu', username=self.name, pkey=paramiko.RSAKey.from_private_key_file(PATH+"id_rsa"))
-			self.ssh.connect('kingspeak33.chpc.utah.edu', username=self.name, password = 'X1q9l4571%')
+			self.ssh.connect('kingspeak33.chpc.utah.edu', username=self.name, pkey=paramiko.RSAKey.from_private_key_file(PATH+"id_rsa"))
 			print('Connected')
 			return True
 		except Exception as e:
